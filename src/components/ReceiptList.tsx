@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Transition } from '@headlessui/react';
 import { Receipt, ReceiptItem } from '../types';
-import { fetchReceiptItems } from '../api';
+import { fetchReceiptItems } from '../api/client.ts';
 
 interface ReceiptListProps {
     userId: string;

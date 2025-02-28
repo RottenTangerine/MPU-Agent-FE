@@ -1,84 +1,147 @@
-import { useState, useRef } from 'react';
-import { CameraIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import { uploadImage } from '../api';
+import { useState, useRef } from 'react'
+import { Dialog } from '@headlessui/react'
+import { CameraIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import axios from 'axios'
 
-interface ImageUploaderProps {
-    userId: string;
+interface Props {
+    open: boolean
+    onClose: () => void
+    userId: string
 }
 
-export const ImageUploader = ({ userId }: ImageUploaderProps) => {
-    const [preview, setPreview] = useState<string | null>(null);
-    const [status, setStatus] = useState<'idle' | 'uploading' | 'error'>('idle');
-    const fileInputRef = useRef<HTMLInputElement>(null);
+const compressImage = async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            const img = new Image()
+            img.src = e.target?.result as string
 
-    const handleUpload = async (file: File) => {
-        try {
-            setStatus('uploading');
-            const reader = new FileReader();
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                const maxWidth = 800
+                const scale = maxWidth / img.width
+                canvas.width = maxWidth
+                canvas.height = img.height * scale
 
-            reader.onloadend = async () => {
-                const base64 = reader.result?.toString().split(',')[1] || '';
-                await uploadImage(userId, base64);
-                setPreview(URL.createObjectURL(file));
-                setStatus('idle');
-            };
+                const ctx = canvas.getContext('2d')!
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
-            reader.readAsDataURL(file);
-        } catch (error) {
-            setStatus('error');
-            setTimeout(() => setStatus('idle'), 5000);
+                canvas.toBlob((blob) => {
+                    const compressedReader = new FileReader()
+                    compressedReader.onloadend = () => {
+                        resolve(compressedReader.result as string)
+                    }
+                    compressedReader.readAsDataURL(blob!)
+                }, 'image/jpeg', 0.7)
+            }
         }
-    };
+        reader.readAsDataURL(file)
+    })
+}
+
+const ImageUploader = ({ open, onClose, userId }: Props) => {
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [preview, setPreview] = useState<string | null>(null)
+    const [isUploading, setIsUploading] = useState(false)
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) {
+            const compressed = await compressImage(file)
+            setPreview(compressed)
+        }
+    }
+
+    const handleUpload = async () => {
+        if (!preview) return
+
+        setIsUploading(true)
+        try {
+            const response = await axios.post('https://www.xhonxyun.site/chat', {
+                user_id: userId,
+                base64Source: preview.split(',')[1] // 移除 data URL 前缀
+            })
+
+            console.log('Upload success:', response.data)
+            alert('上传成功！')
+            onClose()
+        } catch (error) {
+            console.error('Upload failed:', error)
+            alert('上传失败，请重试')
+        } finally {
+            setIsUploading(false)
+        }
+    }
 
     return (
-        <div className="relative group">
-            <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                ref={fileInputRef}
-                onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
-                className="hidden"
-                disabled={status === 'uploading'}
-            />
-
-            <button
-                onClick={() => fileInputRef.current?.click()}
-                className="relative w-16 h-16 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-purple-500 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95 disabled:opacity-50"
-                disabled={status === 'uploading'}
-            >
-                {/* 状态指示 */}
-                {status === 'uploading' && (
-                    <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+        <Dialog open={open} onClose={onClose} className="relative z-50">
+            <div className="fixed inset-0 bg-black/30" />
+            <div className="fixed inset-0 flex items-center justify-center p-4">
+                <Dialog.Panel className="w-full max-w-md rounded-xl bg-white p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <Dialog.Title className="text-xl font-bold">上传收据照片</Dialog.Title>
+                        <button
+                            onClick={onClose}
+                            className="text-gray-500 hover:text-gray-700"
+                        >
+                            <XMarkIcon className="w-6 h-6" />
+                        </button>
                     </div>
-                )}
 
-                {preview ? (
-                    <>
-                        <img
-                            src={preview}
-                            alt="Preview"
-                            className="w-full h-full rounded-full object-cover border-2 border-white"
+                    <div className="space-y-4">
+                        <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            ref={fileInputRef}
+                            onChange={handleFileChange}
+                            className="hidden"
                         />
-                        <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5 hover:bg-red-600 cursor-pointer"
-                             onClick={(e) => {
-                                 e.stopPropagation();
-                                 setPreview(null);
-                             }}>
-                            <XMarkIcon className="w-4 h-4 text-white" />
-                        </div>
-                    </>
-                ) : (
-                    <CameraIcon className="w-8 h-8 text-white transform transition-transform group-hover:scale-110" />
-                )}
-            </button>
 
-            {status === 'error' && (
-                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-red-500 text-sm whitespace-nowrap">
-                    上传失败，请重试
-                </div>
-            )}
-        </div>
-    );
-};
+                        {preview ? (
+                            <div className="relative">
+                                <img
+                                    src={preview}
+                                    alt="预览"
+                                    className="rounded-lg object-cover w-full h-64"
+                                />
+                                <button
+                                    onClick={() => setPreview(null)}
+                                    className="absolute top-2 right-2 bg-white/80 p-1 rounded-full hover:bg-white"
+                                >
+                                    <XMarkIcon className="w-6 h-6 text-gray-700" />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center hover:border-blue-500 transition-colors"
+                            >
+                                <CameraIcon className="w-12 h-12 text-gray-400 mb-4" />
+                                <p className="text-gray-600">点击拍照或选择照片</p>
+                            </button>
+                        )}
+
+                        <div className="flex justify-end space-x-3">
+                            <button
+                                onClick={onClose}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleUpload}
+                                disabled={!preview || isUploading}
+                                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isUploading ? '上传中...' : '确认上传'}
+                            </button>
+                        </div>
+                    </div>
+                </Dialog.Panel>
+            </div>
+        </Dialog>
+    )
+}
+
+export default ImageUploader

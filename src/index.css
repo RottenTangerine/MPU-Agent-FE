@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+
+@keyframes progress {
+    from { width: 0; }
+    to { width: 100%; }
+}
+
+.animate-progress {
+    animation: progress 1.5s ease-out forwards;
+}
